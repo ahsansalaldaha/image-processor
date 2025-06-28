@@ -4,6 +4,7 @@ package config
 type URLIngestorConfig struct {
 	Server   ServerConfig
 	RabbitMQ RabbitMQConfig
+	Metrics  MetricsConfig
 }
 
 // LoadURLIngestorConfig loads configuration for url-ingestor service
@@ -14,6 +15,11 @@ func LoadURLIngestorConfig() *URLIngestorConfig {
 		},
 		RabbitMQ: RabbitMQConfig{
 			URL: getEnv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/"),
+		},
+		Metrics: MetricsConfig{
+			Enabled: getEnvAsBool("METRICS_ENABLED", true),
+			Port:    getEnv("METRICS_PORT", "8083"),
+			Path:    getEnv("METRICS_PATH", "/metrics"),
 		},
 	}
 }

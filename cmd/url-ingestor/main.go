@@ -9,6 +9,8 @@ import (
 	"image-processing-system/pkg/tracing"
 	"log"
 	"net/http"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -24,10 +26,32 @@ func main() {
 	defer conn.Close()
 	defer ch.Close()
 
+	// Start metrics server if enabled
+	if cfg.Metrics.Enabled {
+		go func() {
+			mux := http.NewServeMux()
+			mux.Handle(cfg.Metrics.Path, promhttp.Handler())
+			mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"status":"healthy","service":"url-ingestor"}`))
+			})
+
+			metricsServer := &http.Server{
+				Addr:    ":" + cfg.Metrics.Port,
+				Handler: mux,
+			}
+
+			log.Printf("Metrics server listening on :%s", cfg.Metrics.Port)
+			if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Printf("Metrics server error: %v", err)
+			}
+		}()
+	}
+
 	// Create router with middleware
 	router := handler.NewRouter(ch)
 
-	// Add middleware
+	// Add middleware - ensure metrics endpoint is accessible
 	handler := middleware.LoggingMiddleware(router)
 	handler = middleware.CORSMiddleware(handler)
 
@@ -38,5 +62,17 @@ func main() {
 	}
 
 	log.Printf("url-ingestor listening on :%s", cfg.Server.Port)
+	log.Printf("Available endpoints:")
+	log.Printf("  - POST /submit (submit images)")
+	log.Printf("  - GET /health (health check)")
+	log.Printf("  - GET /status (service status)")
+	log.Printf("  - GET /queue/status (queue status)")
+	log.Printf("  - GET /stats (system stats)")
+	log.Printf("  - GET /metrics (Prometheus metrics)")
+
+	if cfg.Metrics.Enabled {
+		log.Printf("Metrics server available on :%s%s", cfg.Metrics.Port, cfg.Metrics.Path)
+	}
+
 	log.Fatal(srv.ListenAndServe())
 }

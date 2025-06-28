@@ -26,7 +26,7 @@ services:
     volumes:
       - ./docker/minio:/data
   postgres:
-    image: postgres:15
+    image: postgres:17
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres

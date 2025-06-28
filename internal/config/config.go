@@ -11,6 +11,7 @@ type Config struct {
 	Database DatabaseConfig
 	Minio    MinioConfig
 	RabbitMQ RabbitMQConfig
+	Metrics  MetricsConfig
 }
 
 // ServerConfig holds HTTP server configuration
@@ -40,6 +41,13 @@ type MinioConfig struct {
 // RabbitMQConfig holds RabbitMQ configuration
 type RabbitMQConfig struct {
 	URL string
+}
+
+// MetricsConfig holds Prometheus metrics configuration
+type MetricsConfig struct {
+	Enabled bool
+	Port    string
+	Path    string
 }
 
 // getEnv gets an environment variable or returns a default value

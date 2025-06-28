@@ -1,0 +1,32 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'url-ingestor'
+    static_configs:
+      - targets: ['url-ingestor:8080']
+    metrics_path: '/metrics'
+
+  - job_name: 'image-fetcher'
+    static_configs:
+      - targets: ['image-fetcher:8081']
+    metrics_path: '/metrics'
+
+  - job_name: 'image-metadata'
+    static_configs:
+      - targets: ['image-metadata:8082']
+    metrics_path: '/metrics'
+
+  - job_name: 'rabbitmq'
+    static_configs:
+      - targets: ['rabbitmq:15692']
+    metrics_path: '/metrics' 

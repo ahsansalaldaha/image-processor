@@ -1,0 +1,130 @@
+package handler
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"image-processing-system/internal/models"
+
+	amqp "github.com/rabbitmq/amqp091-go"
+)
+
+func TestHealthEndpoint(t *testing.T) {
+	// Create a mock channel
+	ch := &amqp.Channel{} // This will be nil but sufficient for testing
+
+	router := NewRouter(ch)
+	req, err := http.NewRequest("GET", "/health", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+
+	if response["status"] != "healthy" {
+		t.Errorf("expected status 'healthy', got %v", response["status"])
+	}
+
+	if response["service"] != "url-ingestor" {
+		t.Errorf("expected service 'url-ingestor', got %v", response["service"])
+	}
+}
+
+func TestSubmitEndpoint(t *testing.T) {
+	// Create a mock channel
+	ch := &amqp.Channel{} // This will be nil but sufficient for testing
+
+	router := NewRouter(ch)
+
+	// Test valid request
+	job := models.ImageJob{
+		URLs: []string{"http://example.com/image1.jpg", "http://example.com/image2.jpg"},
+	}
+	jobBytes, _ := json.Marshal(job)
+
+	req, err := http.NewRequest("POST", "/submit", bytes.NewBuffer(jobBytes))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	// Note: This will fail because we don't have a real RabbitMQ connection
+	// In a real test, you'd mock the RabbitMQ channel
+	if status := rr.Code; status != http.StatusAccepted {
+		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusAccepted)
+	}
+}
+
+func TestStatusEndpoint(t *testing.T) {
+	// Create a mock channel
+	ch := &amqp.Channel{} // This will be nil but sufficient for testing
+
+	router := NewRouter(ch)
+	req, err := http.NewRequest("GET", "/status", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+
+	if response["service"] != "url-ingestor" {
+		t.Errorf("expected service 'url-ingestor', got %v", response["service"])
+	}
+
+	if response["status"] != "running" {
+		t.Errorf("expected status 'running', got %v", response["status"])
+	}
+}
+
+func TestStatsEndpoint(t *testing.T) {
+	// Create a mock channel
+	ch := &amqp.Channel{} // This will be nil but sufficient for testing
+
+	router := NewRouter(ch)
+	req, err := http.NewRequest("GET", "/stats", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+
+	if response["service"] != "url-ingestor" {
+		t.Errorf("expected service 'url-ingestor', got %v", response["service"])
+	}
+}

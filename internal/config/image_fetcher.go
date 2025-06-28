@@ -5,6 +5,7 @@ type ImageFetcherConfig struct {
 	RabbitMQ RabbitMQConfig
 	Minio    MinioConfig
 	Database DatabaseConfig
+	Metrics  MetricsConfig
 }
 
 // LoadImageFetcherConfig loads configuration for image-fetcher service
@@ -27,6 +28,11 @@ func LoadImageFetcherConfig() *ImageFetcherConfig {
 			Password: getEnv("DB_PASSWORD", "postgres"),
 			DBName:   getEnv("DB_NAME", "images"),
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
+		},
+		Metrics: MetricsConfig{
+			Enabled: getEnvAsBool("METRICS_ENABLED", true),
+			Port:    getEnv("METRICS_PORT", "8081"),
+			Path:    getEnv("METRICS_PATH", "/metrics"),
 		},
 	}
 }

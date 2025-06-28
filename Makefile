@@ -10,6 +10,18 @@ help:
 	@echo "  restart - Restart all services"
 	@echo "  stop    - Stop all services"
 	@echo "  clean   - Clean up containers, volumes, and images"
+	@echo ""
+	@echo "Testing:"
+	@echo "  test                 - Run unit tests"
+	@echo "  test-coverage        - Run tests with coverage report"
+	@echo "  test-integration     - Run integration tests"
+	@echo "  test-postgres-upgrade - Test PostgreSQL 17 upgrade"
+	@echo ""
+	@echo "Monitoring:"
+	@echo "  health-check         - Check service health"
+	@echo "  status-check         - Check service status"
+	@echo "  metrics-check        - Check metrics endpoints"
+	@echo "  open-monitoring      - Open monitoring UIs"
 
 # Development environment
 dev:
@@ -72,4 +84,62 @@ prod-image-fetcher:
 
 prod-image-metadata:
 	@echo "Starting image-metadata service in production mode..."
-	docker-compose -f docker-compose.prod.yml up --build -d image-metadata 
+	docker-compose -f docker-compose.prod.yml up --build -d image-metadata
+
+# Testing commands
+test:
+	go test ./... -v
+
+test-coverage:
+	go test ./... -v -coverprofile=coverage.out
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report generated: coverage.html"
+
+test-integration:
+	./test/integration_test.sh
+
+test-postgres-upgrade:
+	@echo "Testing PostgreSQL 17 upgrade..."
+	./test/postgres_upgrade_test.sh
+
+# Monitoring commands
+monitor-logs:
+	docker-compose -f docker-compose.dev.yml logs -f
+
+monitor-url-ingestor:
+	docker-compose -f docker-compose.dev.yml logs -f url-ingestor
+
+monitor-image-fetcher:
+	docker-compose -f docker-compose.dev.yml logs -f image-fetcher
+
+monitor-image-metadata:
+	docker-compose -f docker-compose.dev.yml logs -f image-metadata
+
+# Health checks
+health-check:
+	@echo "Checking service health..."
+	@curl -s http://localhost:8080/health | jq .
+	@curl -s http://localhost:8081/health | jq .
+	@curl -s http://localhost:8082/health | jq .
+
+status-check:
+	@echo "Checking service status..."
+	@curl -s http://localhost:8080/status | jq .
+	@curl -s http://localhost:8080/queue/status | jq .
+
+metrics-check:
+	@echo "Checking metrics endpoints..."
+	@curl -s http://localhost:8080/metrics | head -20
+	@echo "---"
+	@curl -s http://localhost:8081/metrics | head -20
+	@echo "---"
+	@curl -s http://localhost:8082/metrics | head -20
+
+# Open monitoring UIs
+open-monitoring:
+	@echo "Opening monitoring UIs..."
+	@open http://localhost:3000  # Grafana
+	@open http://localhost:9090  # Prometheus
+	@open http://localhost:16686 # Jaeger
+	@open http://localhost:15672 # RabbitMQ
+	@open http://localhost:9001  # MinIO 

@@ -12,7 +12,7 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 		start := time.Now()
 
 		// Create a response writer wrapper to capture status code
-		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+		wrapped := NewResponseWriter(w)
 
 		next.ServeHTTP(wrapped, r)
 
@@ -22,23 +22,8 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 			r.Method,
 			r.RequestURI,
 			r.RemoteAddr,
-			wrapped.statusCode,
+			wrapped.StatusCode(),
 			duration,
 		)
 	})
-}
-
-// responseWriter wraps http.ResponseWriter to capture status code
-type responseWriter struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rw *responseWriter) WriteHeader(code int) {
-	rw.statusCode = code
-	rw.ResponseWriter.WriteHeader(code)
-}
-
-func (rw *responseWriter) Write(b []byte) (int, error) {
-	return rw.ResponseWriter.Write(b)
 }
