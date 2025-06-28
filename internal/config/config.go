@@ -42,33 +42,6 @@ type RabbitMQConfig struct {
 	URL string
 }
 
-// Load loads configuration from environment variables
-func Load() *Config {
-	return &Config{
-		Server: ServerConfig{
-			Port: getEnv("SERVER_PORT", "8080"),
-		},
-		Database: DatabaseConfig{
-			Host:     getEnv("DB_HOST", "postgres"),
-			Port:     getEnv("DB_PORT", "5432"),
-			User:     getEnv("DB_USER", "postgres"),
-			Password: getEnv("DB_PASSWORD", "postgres"),
-			DBName:   getEnv("DB_NAME", "images"),
-			SSLMode:  getEnv("DB_SSLMODE", "disable"),
-		},
-		Minio: MinioConfig{
-			Endpoint:  getEnv("MINIO_ENDPOINT", "minio:9000"),
-			AccessKey: getEnv("MINIO_ACCESS_KEY", "minioadmin"),
-			SecretKey: getEnv("MINIO_SECRET_KEY", "minioadmin"),
-			UseSSL:    getEnvAsBool("MINIO_USE_SSL", false),
-			Bucket:    getEnv("MINIO_BUCKET", "images"),
-		},
-		RabbitMQ: RabbitMQConfig{
-			URL: getEnv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/"),
-		},
-	}
-}
-
 // getEnv gets an environment variable or returns a default value
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
