@@ -20,6 +20,10 @@ func Connect() (*amqp.Connection, *amqp.Channel) {
 	if err != nil {
 		log.Fatalf("channel fail: %v", err)
 	}
+
+	// Declare queues
 	ch.QueueDeclare("image.urls", false, false, false, false, nil)
+	ch.QueueDeclare("image.processed", false, false, false, false, nil)
+
 	return conn, ch
 }
