@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"image-processing-system/internal/domain"
+	"image-processing-system/internal/models"
 	"image-processing-system/pkg/message"
 
 	"github.com/go-chi/chi/v5"
@@ -17,7 +17,7 @@ func NewRouter(ch *amqp.Channel) http.Handler {
 	r.Use(httprate.LimitByIP(50, 1)) // 50 req/sec
 
 	r.Post("/submit", func(w http.ResponseWriter, r *http.Request) {
-		var job domain.ImageJob
+		var job models.ImageJob
 		if err := json.NewDecoder(r.Body).Decode(&job); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

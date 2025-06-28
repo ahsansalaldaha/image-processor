@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
+	"image-processing-system/internal/config"
 	"image-processing-system/internal/handler"
-	"image-processing-system/pkg/auth"
+	"image-processing-system/internal/middleware"
 	"image-processing-system/pkg/rabbitmq"
 	"image-processing-system/pkg/tracing"
 	"log"
@@ -10,25 +12,31 @@ import (
 )
 
 func main() {
-	tracer := tracing.Init("url-ingestor")
-	defer tracer.Shutdown()
+	// Load configuration
+	cfg := config.LoadURLIngestorConfig()
 
+	// Initialize tracing
+	tracer := tracing.Init("url-ingestor")
+	defer tracer.Shutdown(context.Background())
+
+	// Connect to RabbitMQ
 	conn, ch := rabbitmq.Connect()
 	defer conn.Close()
 	defer ch.Close()
 
+	// Create router with middleware
 	router := handler.NewRouter(ch)
-	tlsCfg, err := auth.LoadMutualTLSConfig("./docker/certs/server.crt", "./docker/certs/server.key", "./docker/certs/ca.crt")
-	if err != nil {
-		log.Fatalf("TLS config error: %v", err)
-	}
 
+	// Add middleware
+	handler := middleware.LoggingMiddleware(router)
+	handler = middleware.CORSMiddleware(handler)
+
+	// Create server
 	srv := &http.Server{
-		Addr:      ":8080",
-		Handler:   router,
-		TLSConfig: tlsCfg,
+		Addr:    ":" + cfg.Server.Port,
+		Handler: handler,
 	}
 
-	log.Println("url-ingestor listening on :8080")
-	log.Fatal(srv.ListenAndServeTLS("", ""))
+	log.Printf("url-ingestor listening on :%s", cfg.Server.Port)
+	log.Fatal(srv.ListenAndServe())
 }
