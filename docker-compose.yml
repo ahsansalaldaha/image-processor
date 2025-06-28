@@ -1,0 +1,53 @@
+version: "3.8"
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  minio:
+    image: minio/minio
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    command: server /data
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./docker/minio:/data
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: images
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./docker/db:/var/lib/postgresql/data
+
+  url-ingestor:
+    build:
+      context: .
+      dockerfile: ./docker/url-ingestor.Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      - rabbitmq
+
+  image-fetcher:
+    build:
+      context: .
+      dockerfile: ./docker/image-fetcher.Dockerfile
+    depends_on:
+      - rabbitmq
+      - minio
+
+  image-metadata:
+    build:
+      context: .
+      dockerfile: ./docker/image-metadata.Dockerfile
+    depends_on:
+      - rabbitmq
+      - postgres
