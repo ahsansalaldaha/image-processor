@@ -2,12 +2,17 @@ package rabbitmq
 
 import (
 	"log"
+	"os"
 
-	"github.com/streadway/amqp"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 func Connect() (*amqp.Connection, *amqp.Channel) {
-	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
+	url := os.Getenv("RABBITMQ_URL")
+	if url == "" {
+		url = "amqp://guest:guest@rabbitmq:5672/"
+	}
+	conn, err := amqp.Dial(url)
 	if err != nil {
 		log.Fatalf("RabbitMQ connect fail: %v", err)
 	}

@@ -12,7 +12,7 @@ import (
 	"image-processing-system/internal/service/storage"
 	"image-processing-system/pkg/message"
 
-	"github.com/streadway/amqp"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 )

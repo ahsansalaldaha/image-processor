@@ -1,10 +1,19 @@
 version: "3.8"
 services:
   rabbitmq:
-    image: rabbitmq:3-management
+    image: rabbitmq:4.1-management
     ports:
       - "5672:5672"
       - "15672:15672"
+    environment:
+      - RABBITMQ_ERLANG_COOKIE=SWQOKODSQALRPCLNMEQG
+      - RABBITMQ_NODE_NAME=rabbit@localhost
+    command: >
+      bash -c "
+        echo 'vm_memory_high_watermark.relative = 0.4' >> /etc/rabbitmq/rabbitmq.conf &&
+        echo 'disk_free_limit.relative = 2.0' >> /etc/rabbitmq/rabbitmq.conf &&
+        docker-entrypoint.sh rabbitmq-server
+      "
 
   minio:
     image: minio/minio

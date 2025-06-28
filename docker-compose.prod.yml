@@ -1,0 +1,123 @@
+version: "3.8"
+services:
+  rabbitmq:
+    image: rabbitmq:4.1-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    environment:
+      - RABBITMQ_ERLANG_COOKIE=SWQOKODSQALRPCLNMEQG
+      - RABBITMQ_NODE_NAME=rabbit@localhost
+    command: >
+      bash -c "
+        echo 'vm_memory_high_watermark.relative = 0.4' >> /etc/rabbitmq/rabbitmq.conf &&
+        echo 'disk_free_limit.relative = 2.0' >> /etc/rabbitmq/rabbitmq.conf &&
+        docker-entrypoint.sh rabbitmq-server
+      "
+
+  minio:
+    image: minio/minio
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+    command: server /data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-images}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  url-ingestor:
+    build:
+      context: .
+      dockerfile: ./docker/url-ingestor.Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - SERVER_PORT=8080
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      - rabbitmq
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+
+  image-fetcher:
+    build:
+      context: .
+      dockerfile: ./docker/image-fetcher.Dockerfile
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - MINIO_USE_SSL=false
+      - MINIO_BUCKET=images
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_NAME=${POSTGRES_DB:-images}
+      - DB_SSLMODE=disable
+    depends_on:
+      rabbitmq:
+        condition: service_started
+      minio:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: 3
+
+  image-metadata:
+    build:
+      context: .
+      dockerfile: ./docker/image-metadata.Dockerfile
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_NAME=${POSTGRES_DB:-images}
+      - DB_SSLMODE=disable
+    depends_on:
+      rabbitmq:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+
+volumes:
+  rabbitmq_data:
+  minio_data:
+  postgres_data: 

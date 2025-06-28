@@ -8,7 +8,7 @@ import (
 	"image-processing-system/internal/config"
 	"image-processing-system/pkg/message"
 
-	"github.com/streadway/amqp"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )

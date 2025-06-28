@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httprate"
-	"github.com/streadway/amqp"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 func NewRouter(ch *amqp.Channel) http.Handler {

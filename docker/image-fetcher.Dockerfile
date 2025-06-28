@@ -1,4 +1,7 @@
-FROM golang:1.23-alpine
+FROM golang:1.24-alpine
+
+# Install air for hot reloading
+RUN go install github.com/air-verse/air@v1.62.0
 
 WORKDIR /app
 COPY go.mod ./
