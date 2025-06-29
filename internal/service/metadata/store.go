@@ -112,7 +112,7 @@ func NewMetadataService(cfg config.DatabaseConfig) (*MetadataService, error) {
 	})
 
 	metricsServer := &http.Server{
-		Addr:    ":8082",
+		Addr:    ":8083",
 		Handler: mux,
 	}
 

@@ -15,6 +15,8 @@ help:
 	@echo "  test                 - Run unit tests"
 	@echo "  test-coverage        - Run tests with coverage report"
 	@echo "  test-integration     - Run integration tests"
+	@echo "  test-e2e            - Run end-to-end tests (requires services running)"
+	@echo "  test-e2e-full       - Start services and run end-to-end tests"
 	@echo "  test-postgres-upgrade - Test PostgreSQL 17 upgrade"
 	@echo ""
 	@echo "Monitoring:"
@@ -97,6 +99,23 @@ test-coverage:
 
 test-integration:
 	./test/integration_test.sh
+
+test-e2e:
+	@echo "Running end-to-end tests..."
+	@chmod +x ./test/e2e_test.sh
+	./test/e2e_test.sh
+
+test-e2e-full:
+	@echo "Starting services and running end-to-end tests..."
+	@echo "Starting development environment..."
+	@docker-compose -f docker-compose.dev.yml up -d
+	@echo "Waiting for services to be ready..."
+	@sleep 30
+	@echo "Running end-to-end tests..."
+	@chmod +x ./test/e2e_test.sh
+	./test/e2e_test.sh
+	@echo "Tests completed. Services are still running."
+	@echo "Use 'make stop' to stop services or 'make logs' to view logs."
 
 test-postgres-upgrade:
 	@echo "Testing PostgreSQL 17 upgrade..."

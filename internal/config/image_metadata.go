@@ -23,7 +23,7 @@ func LoadImageMetadataConfig() *ImageMetadataConfig {
 		},
 		Metrics: MetricsConfig{
 			Enabled: getEnvAsBool("METRICS_ENABLED", true),
-			Port:    getEnv("METRICS_PORT", "8082"),
+			Port:    getEnv("METRICS_PORT", "8083"),
 			Path:    getEnv("METRICS_PATH", "/metrics"),
 		},
 	}

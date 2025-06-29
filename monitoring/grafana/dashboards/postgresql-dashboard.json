@@ -771,6 +771,5 @@
     "timezone": "",
     "title": "PostgreSQL Database Monitoring",
     "uid": "postgresql-monitoring",
-    "version": 1,
     "weekStart": ""
 }

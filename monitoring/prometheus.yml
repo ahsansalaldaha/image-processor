@@ -23,7 +23,7 @@ scrape_configs:
 
   - job_name: 'image-metadata'
     static_configs:
-      - targets: ['image-metadata:8082']
+      - targets: ['image-metadata:8083']
     metrics_path: '/metrics'
 
   - job_name: 'rabbitmq'
