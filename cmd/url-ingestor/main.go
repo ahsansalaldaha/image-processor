@@ -11,7 +11,17 @@ import (
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
+
+// AMQPChannelAdapter adapts amqp.Channel to implement ChannelInterface
+type AMQPChannelAdapter struct {
+	*amqp.Channel
+}
+
+func (a *AMQPChannelAdapter) IsClosed() bool {
+	return a.Channel.IsClosed()
+}
 
 func main() {
 	// Load configuration
@@ -25,6 +35,9 @@ func main() {
 	conn, ch := rabbitmq.Connect()
 	defer conn.Close()
 	defer ch.Close()
+
+	// Create adapter for the channel
+	channelAdapter := &AMQPChannelAdapter{Channel: ch}
 
 	// Start metrics server if enabled
 	if cfg.Metrics.Enabled {
@@ -49,7 +62,7 @@ func main() {
 	}
 
 	// Create router with middleware
-	router := handler.NewRouter(ch)
+	router := handler.NewRouter(channelAdapter)
 
 	// Add middleware - ensure metrics endpoint is accessible
 	handler := middleware.LoggingMiddleware(router)

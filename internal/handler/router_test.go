@@ -12,9 +12,30 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+// MockChannel is a mock implementation of ChannelInterface for testing
+type MockChannel struct {
+	closed bool
+}
+
+func (m *MockChannel) Publish(exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error {
+	if m.closed {
+		return amqp.ErrClosed
+	}
+	return nil
+}
+
+func (m *MockChannel) IsClosed() bool {
+	return m.closed
+}
+
+func (m *MockChannel) Close() error {
+	m.closed = true
+	return nil
+}
+
 func TestHealthEndpoint(t *testing.T) {
 	// Create a mock channel
-	ch := &amqp.Channel{} // This will be nil but sufficient for testing
+	ch := &MockChannel{}
 
 	router := NewRouter(ch)
 	req, err := http.NewRequest("GET", "/health", nil)
@@ -45,7 +66,7 @@ func TestHealthEndpoint(t *testing.T) {
 
 func TestSubmitEndpoint(t *testing.T) {
 	// Create a mock channel
-	ch := &amqp.Channel{} // This will be nil but sufficient for testing
+	ch := &MockChannel{}
 
 	router := NewRouter(ch)
 
@@ -64,16 +85,41 @@ func TestSubmitEndpoint(t *testing.T) {
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 
-	// Note: This will fail because we don't have a real RabbitMQ connection
-	// In a real test, you'd mock the RabbitMQ channel
 	if status := rr.Code; status != http.StatusAccepted {
 		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusAccepted)
 	}
 }
 
+func TestSubmitEndpointWithClosedChannel(t *testing.T) {
+	// Create a mock channel that is closed
+	ch := &MockChannel{closed: true}
+
+	router := NewRouter(ch)
+
+	// Test valid request
+	job := models.ImageJob{
+		URLs: []string{"http://example.com/image1.jpg", "http://example.com/image2.jpg"},
+	}
+	jobBytes, _ := json.Marshal(job)
+
+	req, err := http.NewRequest("POST", "/submit", bytes.NewBuffer(jobBytes))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	// Should return 500 when channel is closed
+	if status := rr.Code; status != http.StatusInternalServerError {
+		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusInternalServerError)
+	}
+}
+
 func TestStatusEndpoint(t *testing.T) {
 	// Create a mock channel
-	ch := &amqp.Channel{} // This will be nil but sufficient for testing
+	ch := &MockChannel{}
 
 	router := NewRouter(ch)
 	req, err := http.NewRequest("GET", "/status", nil)
@@ -104,7 +150,7 @@ func TestStatusEndpoint(t *testing.T) {
 
 func TestStatsEndpoint(t *testing.T) {
 	// Create a mock channel
-	ch := &amqp.Channel{} // This will be nil but sufficient for testing
+	ch := &MockChannel{}
 
 	router := NewRouter(ch)
 	req, err := http.NewRequest("GET", "/stats", nil)
