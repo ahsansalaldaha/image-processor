@@ -22,6 +22,8 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // ImageWorker handles image processing jobs
@@ -122,8 +124,32 @@ func (w *ImageWorker) processJob(msg amqp.Delivery) {
 		return
 	}
 
-	ctx, span := otel.Tracer("worker").Start(context.Background(), "processJob")
-	span.SetAttributes(attribute.String("trace_id", env.TraceID))
+	// Extract trace context from AMQP headers
+	prop := propagation.TraceContext{}
+	headers := make(map[string]string)
+	for k, v := range msg.Headers {
+		if s, ok := v.(string); ok {
+			headers[k] = s
+		} else if b, ok := v.([]byte); ok {
+			headers[k] = string(b)
+		}
+	}
+	if tp, ok := headers["traceparent"]; ok {
+		log.Printf("[fetcher] Consumed traceparent: %s", tp)
+	}
+	ctx := context.Background()
+	ctx = prop.Extract(ctx, propagation.MapCarrier(headers))
+
+	tracer := otel.Tracer("worker")
+	ctx, span := tracer.Start(ctx, "processJob", trace.WithSpanKind(trace.SpanKindConsumer))
+	span.SetAttributes(
+		attribute.String("trace_id", env.TraceID),
+		attribute.String("processing_type", job.ProcessingTypes[0]),
+		attribute.String("source_url", job.URLs[0]),
+		attribute.String("messaging.system", "rabbitmq"),
+		attribute.String("messaging.destination.name", "image.urls"),
+		attribute.String("messaging.operation", "process"),
+	)
 	defer span.End()
 
 	successCount := 0
@@ -140,8 +166,11 @@ func (w *ImageWorker) processJob(msg amqp.Delivery) {
 	if err := w.processImage(ctx, url, processingType, env.TraceID); err != nil {
 		log.Printf("Failed to process image %s [%s]: %v", url, processingType, err)
 		errorCount++
+		span.SetAttributes(attribute.String("status", "error"))
+		span.RecordError(err)
 	} else {
 		successCount++
+		span.SetAttributes(attribute.String("status", "success"))
 	}
 
 	// Record metrics
@@ -227,11 +256,36 @@ func (w *ImageWorker) processImage(ctx context.Context, url, processingType, tra
 		return err
 	}
 
+	// Start a child span for publishing
+	tracer := otel.Tracer("worker")
+	pubCtx, pubSpan := tracer.Start(ctx, "PublishResult", trace.WithSpanKind(trace.SpanKindProducer))
+	pubSpan.SetAttributes(
+		attribute.String("messaging.system", "rabbitmq"),
+		attribute.String("messaging.destination.name", "image.processed"),
+		attribute.String("messaging.operation", "send"),
+	)
+	defer pubSpan.End()
+
+	// Inject trace context into headers
+	prop := propagation.TraceContext{}
+	headers := make(map[string]string)
+	prop.Inject(pubCtx, propagation.MapCarrier(headers))
+	if tp, ok := headers["traceparent"]; ok {
+		log.Printf("[fetcher] Injecting traceparent: %s", tp)
+	}
+
+	amqpHeaders := amqp.Table{}
+	for k, v := range headers {
+		amqpHeaders[k] = v
+	}
+
 	err = w.channel.Publish("", "image.processed", false, false, amqp.Publishing{
 		ContentType: "application/json",
 		Body:        encoded,
+		Headers:     amqpHeaders,
 	})
 	if err != nil {
+		pubSpan.RecordError(err)
 		return err
 	}
 

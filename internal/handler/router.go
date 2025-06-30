@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -14,6 +16,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 // ChannelInterface defines the interface for RabbitMQ channels
@@ -61,15 +65,30 @@ func validateProcessingTypes(types []string) (invalid []string) {
 }
 
 // publishJob publishes a single job to the queue
-func publishJob(ch ChannelInterface, traceID string, url string, processingType string) error {
+func publishJob(ctx context.Context, ch ChannelInterface, traceID string, url string, processingType string) error {
 	job := models.ImageJob{
 		URLs:            []string{url},
 		ProcessingTypes: []string{processingType},
 	}
 	encoded, _ := message.Encode(traceID, "url-ingestor", job)
+
+	// Inject trace context into headers
+	prop := propagation.TraceContext{}
+	headers := make(map[string]string)
+	prop.Inject(ctx, propagation.MapCarrier(headers))
+	if tp, ok := headers["traceparent"]; ok {
+		log.Printf("[ingestor] Injecting traceparent: %s", tp)
+	}
+
+	amqpHeaders := amqp.Table{}
+	for k, v := range headers {
+		amqpHeaders[k] = v
+	}
+
 	return ch.Publish("", "image.urls", false, false, amqp.Publishing{
 		ContentType: "application/json",
 		Body:        encoded,
+		Headers:     amqpHeaders,
 	})
 }
 
@@ -172,12 +191,21 @@ func NewRouter(ch ChannelInterface) http.Handler {
 			return
 		}
 
+		// Extract traceparent header if present
+		prop := propagation.TraceContext{}
+		ctx := r.Context()
+		ctx = prop.Extract(ctx, propagation.HeaderCarrier(r.Header))
+		tracer := otel.Tracer("url-ingestor")
+		ctx, span := tracer.Start(ctx, "SubmitImageJob")
+		defer span.End()
+
 		traceID := r.Header.Get("X-Trace-ID")
 		totalJobs := 0
 
 		for _, url := range job.URLs {
 			// Always publish the original
-			if err := publishJob(ch, traceID, url, "original"); err != nil {
+			if err := publishJob(ctx, ch, traceID, url, "original"); err != nil {
+				span.RecordError(err)
 				http.Error(w, "publish failed", http.StatusInternalServerError)
 				return
 			}
@@ -188,7 +216,8 @@ func NewRouter(ch ChannelInterface) http.Handler {
 				if pType == "original" {
 					continue
 				}
-				if err := publishJob(ch, traceID, url, pType); err != nil {
+				if err := publishJob(ctx, ch, traceID, url, pType); err != nil {
+					span.RecordError(err)
 					http.Error(w, "publish failed", http.StatusInternalServerError)
 					return
 				}

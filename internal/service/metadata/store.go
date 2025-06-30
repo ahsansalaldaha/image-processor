@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -13,6 +14,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -117,12 +122,43 @@ func (m *MetadataService) ConsumeAndStore(ch *amqp.Channel) {
 	for msg := range msgs {
 		start := time.Now()
 
+		// Extract trace context from AMQP headers (robust for string and []byte)
+		prop := propagation.TraceContext{}
+		headers := make(map[string]string)
+		for k, v := range msg.Headers {
+			switch val := v.(type) {
+			case string:
+				headers[k] = val
+			case []byte:
+				headers[k] = string(val)
+			}
+		}
+		if tp, ok := headers["traceparent"]; ok {
+			log.Printf("[metadata] Consumed traceparent: %s", tp)
+		}
+		ctx := context.Background()
+		ctx = prop.Extract(ctx, propagation.MapCarrier(headers))
+
 		env, payload, err := message.Decode[models.ImageProcessedPayload](msg.Body)
 		if err != nil {
 			log.Printf("Failed to decode message: %v", err)
 			recordsStored.WithLabelValues("decode_error").Inc()
 			continue
 		}
+
+		tracer := otel.Tracer("image-metadata")
+		spanName := "StoreMetadata/" + payload.ProcessingType
+		ctx, span := tracer.Start(ctx, spanName, trace.WithSpanKind(trace.SpanKindConsumer))
+		span.SetAttributes(
+			attribute.String("processing_type", payload.ProcessingType),
+			attribute.String("status", payload.Status),
+			attribute.String("source_url", payload.SourceURL),
+			attribute.String("trace_id", payload.TraceID),
+			attribute.String("messaging.system", "rabbitmq"),
+			attribute.String("messaging.destination.name", "image.processed"),
+			attribute.String("messaging.operation", "process"),
+		)
+		defer span.End()
 
 		record := models.ImageRecord{
 			SourceURL:      payload.SourceURL,
@@ -138,13 +174,17 @@ func (m *MetadataService) ConsumeAndStore(ch *amqp.Channel) {
 			ProcessingType: payload.ProcessingType,
 		}
 
-		if err := m.db.Create(&record).Error; err != nil {
+		// Optional: wrap DB create in a child span
+		dbCtx, dbSpan := tracer.Start(ctx, "DBCreate")
+		if err := m.db.WithContext(dbCtx).Create(&record).Error; err != nil {
+			dbSpan.RecordError(err)
 			log.Printf("Failed to save record to database: %v", err)
 			recordsStored.WithLabelValues("error").Inc()
 		} else {
 			log.Printf("Saved image record: %s -> %s", payload.SourceURL, payload.S3Path)
 			recordsStored.WithLabelValues("success").Inc()
 		}
+		dbSpan.End()
 
 		storageDuration.Observe(time.Since(start).Seconds())
 	}
