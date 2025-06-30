@@ -387,4 +387,100 @@ make test-integration
 
 # Check metrics
 make metrics-check
-``` 
+```
+
+## API Usage
+
+### Submit Image Processing Job
+
+You can submit images for processing with one or more processing types. The allowed types are:
+- original (always stored)
+- grayscale
+- resize
+- blur
+- sharpen
+
+#### Example curl commands
+
+**Original only (default if no types specified):**
+```bash
+curl -X POST http://localhost:8080/submit \
+  -H "Content-Type: application/json" \
+  -d '{"urls": ["https://picsum.photos/200/300"]}'
+```
+
+**Grayscale:**
+```bash
+curl -X POST http://localhost:8080/submit \
+  -H "Content-Type: application/json" \
+  -d '{"urls": ["https://picsum.photos/200/300"], "processing_types": ["grayscale"]}'
+```
+
+**Resize:**
+```bash
+curl -X POST http://localhost:8080/submit \
+  -H "Content-Type: application/json" \
+  -d '{"urls": ["https://picsum.photos/200/300"], "processing_types": ["resize"]}'
+```
+
+**Blur:**
+```bash
+curl -X POST http://localhost:8080/submit \
+  -H "Content-Type: application/json" \
+  -d '{"urls": ["https://picsum.photos/200/300"], "processing_types": ["blur"]}'
+```
+
+**Sharpen:**
+```bash
+curl -X POST http://localhost:8080/submit \
+  -H "Content-Type: application/json" \
+  -d '{"urls": ["https://picsum.photos/200/300"], "processing_types": ["sharpen"]}'
+```
+
+**Multiple types (original always included):**
+```bash
+curl -X POST http://localhost:8080/submit \
+  -H "Content-Type: application/json" \
+  -d '{"urls": ["https://picsum.photos/200/300"], "processing_types": ["grayscale", "resize"]}'
+```
+
+---
+
+## Testing
+
+Run end-to-end and integration tests:
+
+```bash
+./test/e2e_test.sh
+./test/integration_test.sh
+```
+
+These scripts will:
+- Submit images for processing
+- Check service health and queue status
+- Verify metrics and storage
+
+---
+
+## Benchmarking
+
+To benchmark the system, you can use the performance test in the e2e script or submit a batch of images:
+
+```bash
+# Submit 10 images for performance testing
+for i in {1..10}; do
+  curl -X POST http://localhost:8080/submit \
+    -H "Content-Type: application/json" \
+    -d '{"urls": ["https://picsum.photos/200/300?random='$i'"]}'
+done
+```
+
+Or run the performance section in the e2e test:
+```bash
+./test/e2e_test.sh
+```
+
+Monitor metrics at:
+- http://localhost:8080/metrics
+- http://localhost:9090 (Prometheus)
+- http://localhost:3000 (Grafana)

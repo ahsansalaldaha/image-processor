@@ -36,6 +36,43 @@ func init() {
 	prometheus.MustRegister(imagesSubmitted)
 }
 
+// Allowed processing types for image jobs
+var allowedProcessingTypes = map[string]struct{}{
+	"original":  {},
+	"grayscale": {},
+	"resize":    {},
+	"blur":      {},
+	"sharpen":   {},
+}
+
+// getAllowedProcessingTypes returns a slice of allowed processing types
+func getAllowedProcessingTypes() []string {
+	return []string{"original", "grayscale", "resize", "blur", "sharpen"}
+}
+
+// validateProcessingTypes checks if all provided types are allowed
+func validateProcessingTypes(types []string) (invalid []string) {
+	for _, t := range types {
+		if _, ok := allowedProcessingTypes[t]; !ok {
+			invalid = append(invalid, t)
+		}
+	}
+	return
+}
+
+// publishJob publishes a single job to the queue
+func publishJob(ch ChannelInterface, traceID string, url string, processingType string) error {
+	job := models.ImageJob{
+		URLs:            []string{url},
+		ProcessingTypes: []string{processingType},
+	}
+	encoded, _ := message.Encode(traceID, "url-ingestor", job)
+	return ch.Publish("", "image.urls", false, false, amqp.Publishing{
+		ContentType: "application/json",
+		Body:        encoded,
+	})
+}
+
 func NewRouter(ch ChannelInterface) http.Handler {
 	r := chi.NewRouter()
 
@@ -122,40 +159,36 @@ func NewRouter(ch ChannelInterface) http.Handler {
 			return
 		}
 
-		totalJobs := 0
-		traceID := r.Header.Get("X-Trace-ID")
-		for _, url := range job.URLs {
-			// Always enqueue the original
-			originalJob := models.ImageJob{
-				URLs:            []string{url},
-				ProcessingTypes: []string{"original"},
-			}
-			encoded, _ := message.Encode(traceID, "url-ingestor", originalJob)
-			err := ch.Publish("", "image.urls", false, false, amqp.Publishing{
-				ContentType: "application/json",
-				Body:        encoded,
+		// Validate processing types
+		invalidTypes := validateProcessingTypes(job.ProcessingTypes)
+		if len(invalidTypes) > 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error":         "invalid processing_types provided",
+				"invalid_types": invalidTypes,
+				"allowed_types": getAllowedProcessingTypes(),
 			})
-			if err != nil {
+			return
+		}
+
+		traceID := r.Header.Get("X-Trace-ID")
+		totalJobs := 0
+
+		for _, url := range job.URLs {
+			// Always publish the original
+			if err := publishJob(ch, traceID, url, "original"); err != nil {
 				http.Error(w, "publish failed", http.StatusInternalServerError)
 				return
 			}
 			totalJobs++
 
-			// Enqueue other processing types if specified
+			// Publish other processing types if specified (skip duplicate 'original')
 			for _, pType := range job.ProcessingTypes {
 				if pType == "original" {
-					continue // already enqueued
+					continue
 				}
-				newJob := models.ImageJob{
-					URLs:            []string{url},
-					ProcessingTypes: []string{pType},
-				}
-				encoded, _ := message.Encode(traceID, "url-ingestor", newJob)
-				err := ch.Publish("", "image.urls", false, false, amqp.Publishing{
-					ContentType: "application/json",
-					Body:        encoded,
-				})
-				if err != nil {
+				if err := publishJob(ch, traceID, url, pType); err != nil {
 					http.Error(w, "publish failed", http.StatusInternalServerError)
 					return
 				}
@@ -163,9 +196,7 @@ func NewRouter(ch ChannelInterface) http.Handler {
 			}
 		}
 
-		// Increment metrics for total jobs submitted
 		imagesSubmitted.Add(float64(totalJobs))
-
 		w.WriteHeader(http.StatusAccepted)
 	})
 
