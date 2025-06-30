@@ -125,6 +125,21 @@ make prod-image-fetcher
 make prod-image-metadata
 ```
 
+## Usage
+
+To submit URLs for image processing, use the following `curl` command:
+
+```bash
+curl -X POST http://localhost:8080/submit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "urls": [
+      "https://demonslayer-anime.com/portal/assets/img/img_kv_2.jpg",
+      "https://demonslayer-hinokami.sega.com/img/purchase/digital-standard.jpg"
+    ]
+  }'
+```
+
 ## Monitoring & Observability
 
 ### Health Checks
