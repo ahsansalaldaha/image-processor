@@ -122,20 +122,50 @@ func NewRouter(ch ChannelInterface) http.Handler {
 			return
 		}
 
-		// Increment metrics
-		imagesSubmitted.Add(float64(len(job.URLs)))
-
+		totalJobs := 0
 		traceID := r.Header.Get("X-Trace-ID")
-		encoded, _ := message.Encode(traceID, "url-ingestor", job)
+		for _, url := range job.URLs {
+			// Always enqueue the original
+			originalJob := models.ImageJob{
+				URLs:            []string{url},
+				ProcessingTypes: []string{"original"},
+			}
+			encoded, _ := message.Encode(traceID, "url-ingestor", originalJob)
+			err := ch.Publish("", "image.urls", false, false, amqp.Publishing{
+				ContentType: "application/json",
+				Body:        encoded,
+			})
+			if err != nil {
+				http.Error(w, "publish failed", http.StatusInternalServerError)
+				return
+			}
+			totalJobs++
 
-		err := ch.Publish("", "image.urls", false, false, amqp.Publishing{
-			ContentType: "application/json",
-			Body:        encoded,
-		})
-		if err != nil {
-			http.Error(w, "publish failed", http.StatusInternalServerError)
-			return
+			// Enqueue other processing types if specified
+			for _, pType := range job.ProcessingTypes {
+				if pType == "original" {
+					continue // already enqueued
+				}
+				newJob := models.ImageJob{
+					URLs:            []string{url},
+					ProcessingTypes: []string{pType},
+				}
+				encoded, _ := message.Encode(traceID, "url-ingestor", newJob)
+				err := ch.Publish("", "image.urls", false, false, amqp.Publishing{
+					ContentType: "application/json",
+					Body:        encoded,
+				})
+				if err != nil {
+					http.Error(w, "publish failed", http.StatusInternalServerError)
+					return
+				}
+				totalJobs++
+			}
 		}
+
+		// Increment metrics for total jobs submitted
+		imagesSubmitted.Add(float64(totalJobs))
+
 		w.WriteHeader(http.StatusAccepted)
 	})
 

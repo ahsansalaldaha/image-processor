@@ -2,6 +2,8 @@ package worker
 
 import (
 	"context"
+	"fmt"
+	"image"
 	"log"
 	"sync"
 	"time"
@@ -127,14 +129,19 @@ func (w *ImageWorker) processJob(msg amqp.Delivery) {
 	successCount := 0
 	errorCount := 0
 
-	for _, url := range job.URLs {
-		if err := w.processImage(ctx, url, env.TraceID); err != nil {
-			log.Printf("Failed to process image %s: %v", url, err)
-			errorCount++
-			// Continue processing other images in the job
-		} else {
-			successCount++
-		}
+	// Each job now contains a single URL and a single processing type
+	if len(job.URLs) == 0 || len(job.ProcessingTypes) == 0 {
+		log.Printf("Job missing URL or processing type")
+		return
+	}
+	url := job.URLs[0]
+	processingType := job.ProcessingTypes[0]
+
+	if err := w.processImage(ctx, url, processingType, env.TraceID); err != nil {
+		log.Printf("Failed to process image %s [%s]: %v", url, processingType, err)
+		errorCount++
+	} else {
+		successCount++
 	}
 
 	// Record metrics
@@ -143,8 +150,8 @@ func (w *ImageWorker) processJob(msg amqp.Delivery) {
 	middleware.JobProcessingDuration.WithLabelValues("image-fetcher").Observe(time.Since(start).Seconds())
 }
 
-// processImage processes a single image
-func (w *ImageWorker) processImage(ctx context.Context, url, traceID string) error {
+// processImage processes a single image with the given processing type
+func (w *ImageWorker) processImage(ctx context.Context, url, processingType, traceID string) error {
 	// Download image
 	downloadStart := time.Now()
 	img, format, err := w.processor.DownloadImage(ctx, url)
@@ -162,14 +169,32 @@ func (w *ImageWorker) processImage(ctx context.Context, url, traceID string) err
 		height = img.Bounds().Dy()
 	}
 
-	// Process image (convert to grayscale)
+	// Process image according to processingType
 	processStart := time.Now()
-	processedImg := w.processor.Grayscale(img)
-	middleware.ProcessingDuration.WithLabelValues("grayscale", "image-fetcher").Observe(time.Since(processStart).Seconds())
+	var processedImg image.Image
+	switch processingType {
+	case "original":
+		processedImg = img // store as-is
+		middleware.ProcessingDuration.WithLabelValues("original", "image-fetcher").Observe(time.Since(processStart).Seconds())
+	case "grayscale":
+		processedImg = w.processor.Grayscale(img)
+		middleware.ProcessingDuration.WithLabelValues("grayscale", "image-fetcher").Observe(time.Since(processStart).Seconds())
+	case "resize":
+		processedImg = w.processor.Resize(img, 100, 100)
+		middleware.ProcessingDuration.WithLabelValues("resize", "image-fetcher").Observe(time.Since(processStart).Seconds())
+	case "blur":
+		processedImg = w.processor.Blur(img, 2.0)
+		middleware.ProcessingDuration.WithLabelValues("blur", "image-fetcher").Observe(time.Since(processStart).Seconds())
+	case "sharpen":
+		processedImg = w.processor.Sharpen(img, 2.0)
+		middleware.ProcessingDuration.WithLabelValues("sharpen", "image-fetcher").Observe(time.Since(processStart).Seconds())
+	default:
+		return fmt.Errorf("unsupported processing type: %s", processingType)
+	}
 
-	// Upload to storage
+	// Upload to storage (pass processingType for filename)
 	uploadStart := time.Now()
-	filename, err := w.storage.UploadImage(ctx, processedImg)
+	filename, err := w.storage.UploadImageWithType(ctx, processedImg, processingType)
 	if err != nil {
 		middleware.ProcessingDuration.WithLabelValues("upload", "image-fetcher").Observe(time.Since(uploadStart).Seconds())
 		return err
@@ -185,14 +210,15 @@ func (w *ImageWorker) processImage(ctx context.Context, url, traceID string) err
 
 	// Create result payload
 	result := models.ImageProcessedPayload{
-		SourceURL: url,
-		S3Path:    w.storage.GetImageURL(filename),
-		Status:    "success",
-		TraceID:   traceID,
-		Width:     width,
-		Height:    height,
-		Format:    format,
-		FileSize:  fileSize,
+		SourceURL:      url,
+		S3Path:         w.storage.GetImageURL(filename),
+		Status:         "success",
+		TraceID:        traceID,
+		Width:          width,
+		Height:         height,
+		Format:         format,
+		FileSize:       fileSize,
+		ProcessingType: processingType,
 	}
 
 	// Publish result
@@ -209,6 +235,6 @@ func (w *ImageWorker) processImage(ctx context.Context, url, traceID string) err
 		return err
 	}
 
-	log.Printf("Successfully processed image: %s -> %s", url, result.S3Path)
+	log.Printf("Successfully processed image: %s [%s] -> %s", url, processingType, result.S3Path)
 	return nil
 }

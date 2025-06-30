@@ -75,6 +75,30 @@ func (m *MinioService) UploadImage(ctx context.Context, img image.Image) (string
 	return filename, nil
 }
 
+// UploadImageWithType uploads an image to MinIO with a type-specific filename
+func (m *MinioService) UploadImageWithType(ctx context.Context, img image.Image, processingType string) (string, error) {
+	buf := new(bytes.Buffer)
+	if err := jpeg.Encode(buf, img, &jpeg.Options{Quality: 90}); err != nil {
+		return "", fmt.Errorf("failed to encode image: %w", err)
+	}
+
+	timestamp := time.Now().Format("20060102150405")
+	filename := fmt.Sprintf("%s_%s.jpg", timestamp, processingType)
+	_, err := m.client.PutObject(
+		ctx,
+		m.config.Bucket,
+		filename,
+		bytes.NewReader(buf.Bytes()),
+		int64(buf.Len()),
+		minio.PutObjectOptions{ContentType: "image/jpeg"},
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to upload image: %w", err)
+	}
+
+	return filename, nil
+}
+
 // GetImageURL returns the full URL for an image
 func (m *MinioService) GetImageURL(filename string) string {
 	return fmt.Sprintf("s3://%s/%s", m.config.Bucket, filename)

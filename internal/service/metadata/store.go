@@ -125,16 +125,17 @@ func (m *MetadataService) ConsumeAndStore(ch *amqp.Channel) {
 		}
 
 		record := models.ImageRecord{
-			SourceURL:   payload.SourceURL,
-			S3Path:      payload.S3Path,
-			ProcessedAt: env.Timestamp,
-			Status:      payload.Status,
-			ErrorMsg:    payload.ErrorMsg,
-			TraceID:     payload.TraceID,
-			Width:       payload.Width,
-			Height:      payload.Height,
-			Format:      payload.Format,
-			FileSize:    payload.FileSize,
+			SourceURL:      payload.SourceURL,
+			S3Path:         payload.S3Path,
+			ProcessedAt:    env.Timestamp,
+			Status:         payload.Status,
+			ErrorMsg:       payload.ErrorMsg,
+			TraceID:        payload.TraceID,
+			Width:          payload.Width,
+			Height:         payload.Height,
+			Format:         payload.Format,
+			FileSize:       payload.FileSize,
+			ProcessingType: payload.ProcessingType,
 		}
 
 		if err := m.db.Create(&record).Error; err != nil {
