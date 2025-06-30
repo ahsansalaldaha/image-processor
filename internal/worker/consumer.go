@@ -147,12 +147,20 @@ func (w *ImageWorker) processJob(msg amqp.Delivery) {
 func (w *ImageWorker) processImage(ctx context.Context, url, traceID string) error {
 	// Download image
 	downloadStart := time.Now()
-	img, _, err := w.processor.DownloadImage(ctx, url)
+	img, format, err := w.processor.DownloadImage(ctx, url)
 	if err != nil {
 		middleware.ProcessingDuration.WithLabelValues("download", "image-fetcher").Observe(time.Since(downloadStart).Seconds())
 		return err
 	}
 	middleware.ProcessingDuration.WithLabelValues("download", "image-fetcher").Observe(time.Since(downloadStart).Seconds())
+
+	// Extract image dimensions
+	width := 0
+	height := 0
+	if img != nil {
+		width = img.Bounds().Dx()
+		height = img.Bounds().Dy()
+	}
 
 	// Process image (convert to grayscale)
 	processStart := time.Now()
@@ -168,12 +176,23 @@ func (w *ImageWorker) processImage(ctx context.Context, url, traceID string) err
 	}
 	middleware.ProcessingDuration.WithLabelValues("upload", "image-fetcher").Observe(time.Since(uploadStart).Seconds())
 
+	// Get file size from MinIO
+	fileSize, err := w.storage.GetFileSize(ctx, filename)
+	if err != nil {
+		log.Printf("Failed to get file size for %s: %v", filename, err)
+		fileSize = 0
+	}
+
 	// Create result payload
-	result := metadata.ImageProcessedPayload{
+	result := models.ImageProcessedPayload{
 		SourceURL: url,
 		S3Path:    w.storage.GetImageURL(filename),
 		Status:    "success",
 		TraceID:   traceID,
+		Width:     width,
+		Height:    height,
+		Format:    format,
+		FileSize:  fileSize,
 	}
 
 	// Publish result

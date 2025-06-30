@@ -235,6 +235,15 @@ The integration test script:
 - Verifies metrics collection
 - Tests the complete processing pipeline
 
+### Benchmarking
+
+```bash
+# Run Go benchmarks (API and core functions)
+make benchmark
+```
+
+This will run all Go benchmarks, including API benchmarks (e.g., BenchmarkSubmitAPI) and core function benchmarks, and display performance metrics.
+
 ### Test Coverage
 
 After running `make test-coverage`, open `coverage.html` in your browser to view detailed coverage reports.

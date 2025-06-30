@@ -18,6 +18,7 @@ help:
 	@echo "  test-e2e            - Run end-to-end tests (requires services running)"
 	@echo "  test-e2e-full       - Start services and run end-to-end tests"
 	@echo "  test-postgres-upgrade - Test PostgreSQL 17 upgrade"
+	@echo "  benchmark            - Run Go benchmarks (API and core functions)"
 	@echo ""
 	@echo "Monitoring:"
 	@echo "  health-check         - Check service health"
@@ -120,6 +121,11 @@ test-e2e-full:
 test-postgres-upgrade:
 	@echo "Testing PostgreSQL 17 upgrade..."
 	./test/postgres_upgrade_test.sh
+
+# Benchmarking
+benchmark:
+	@echo "Running Go benchmarks (API and core functions)..."
+	go test -bench=. -benchmem ./...
 
 # Monitoring commands
 monitor-logs:

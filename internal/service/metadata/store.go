@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"image-processing-system/internal/config"
+	"image-processing-system/internal/models"
 	"image-processing-system/pkg/message"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -47,26 +48,6 @@ func init() {
 	prometheus.MustRegister(dbConnections)
 }
 
-// ImageRecord represents an image processing record in the database
-type ImageRecord struct {
-	ID          uint `gorm:"primaryKey"`
-	SourceURL   string
-	S3Path      string
-	ProcessedAt time.Time
-	Status      string
-	ErrorMsg    string
-	TraceID     string
-}
-
-// ImageProcessedPayload represents the payload for processed image messages
-type ImageProcessedPayload struct {
-	SourceURL string `json:"source_url"`
-	S3Path    string `json:"s3_path"`
-	Status    string `json:"status"` // success/error
-	ErrorMsg  string `json:"error_msg,omitempty"`
-	TraceID   string `json:"trace_id"`
-}
-
 // MetadataService handles metadata operations
 type MetadataService struct {
 	db            *gorm.DB
@@ -99,7 +80,7 @@ func NewMetadataService(cfg config.DatabaseConfig) (*MetadataService, error) {
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	// Auto migrate the schema
-	if err := db.AutoMigrate(&ImageRecord{}); err != nil {
+	if err := db.AutoMigrate(&models.ImageRecord{}); err != nil {
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
 
@@ -136,20 +117,24 @@ func (m *MetadataService) ConsumeAndStore(ch *amqp.Channel) {
 	for msg := range msgs {
 		start := time.Now()
 
-		env, payload, err := message.Decode[ImageProcessedPayload](msg.Body)
+		env, payload, err := message.Decode[models.ImageProcessedPayload](msg.Body)
 		if err != nil {
 			log.Printf("Failed to decode message: %v", err)
 			recordsStored.WithLabelValues("decode_error").Inc()
 			continue
 		}
 
-		record := ImageRecord{
+		record := models.ImageRecord{
 			SourceURL:   payload.SourceURL,
 			S3Path:      payload.S3Path,
 			ProcessedAt: env.Timestamp,
 			Status:      payload.Status,
 			ErrorMsg:    payload.ErrorMsg,
 			TraceID:     payload.TraceID,
+			Width:       payload.Width,
+			Height:      payload.Height,
+			Format:      payload.Format,
+			FileSize:    payload.FileSize,
 		}
 
 		if err := m.db.Create(&record).Error; err != nil {
@@ -165,15 +150,15 @@ func (m *MetadataService) ConsumeAndStore(ch *amqp.Channel) {
 }
 
 // GetImageRecords retrieves image records from the database
-func (m *MetadataService) GetImageRecords(limit int) ([]ImageRecord, error) {
-	var records []ImageRecord
+func (m *MetadataService) GetImageRecords(limit int) ([]models.ImageRecord, error) {
+	var records []models.ImageRecord
 	err := m.db.Order("processed_at DESC").Limit(limit).Find(&records).Error
 	return records, err
 }
 
 // GetImageRecordByID retrieves a specific image record by ID
-func (m *MetadataService) GetImageRecordByID(id uint) (*ImageRecord, error) {
-	var record ImageRecord
+func (m *MetadataService) GetImageRecordByID(id uint) (*models.ImageRecord, error) {
+	var record models.ImageRecord
 	err := m.db.First(&record, id).Error
 	if err != nil {
 		return nil, err

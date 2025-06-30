@@ -79,3 +79,12 @@ func (m *MinioService) UploadImage(ctx context.Context, img image.Image) (string
 func (m *MinioService) GetImageURL(filename string) string {
 	return fmt.Sprintf("s3://%s/%s", m.config.Bucket, filename)
 }
+
+// GetFileSize returns the size of the file in bytes for a given filename
+func (m *MinioService) GetFileSize(ctx context.Context, filename string) (int64, error) {
+	objInfo, err := m.client.StatObject(ctx, m.config.Bucket, filename, minio.StatObjectOptions{})
+	if err != nil {
+		return 0, fmt.Errorf("failed to stat object: %w", err)
+	}
+	return objInfo.Size, nil
+}
